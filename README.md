@@ -1,224 +1,183 @@
 # 📚 ThinkBoard — MERN App (MongoDB, Express, React, Node.js)
 
-
-> **Resumo:** Aplicação **MERN** com **API RESTful** em **Node.js + Express**, persistência em **MongoDB** e frontend em **React**. Este guia cobre instalação, configuração (`.env`), estrutura, scripts e endpoints principais. *(Opcional: cache/sessões com Redis).*
-> **Status:** v1 (em desenvolvimento)
+Aplicação **full‑stack MERN** para criar, listar, atualizar e excluir **notas** (título e conteúdo), com **rate limiting via Upstash Redis** e guia rápido de execução e deploy.
 
 ---
 
-## Sumário
-
-* [Stack](#stack)
-* [Requisitos](#requisitos)
-* [Estrutura do projeto](#estrutura-do-projeto)
-* [Configuração](#configuração)
-* [Rodando a aplicação](#rodando-a-aplicação)
-* [Scripts úteis](#scripts-úteis)
-* [Endpoints principais](#endpoints-principais)
-* [Padrões e boas práticas](#padrões-e-boas-práticas)
-* [Arquitetura](#arquitetura)
-* [Roadmap](#roadmap)
-* [Licença](#licença)
+## 🎯 Visão Geral
+- **Stack:** MongoDB, Express, React (Vite), Node
+- **Objetivo:** API REST simples e estável + UI responsiva
+- **Destaques:** organização em camadas, variáveis de ambiente e *rate limiting*
 
 ---
 
-## Stack
-
-* **MongoDB** — Banco de dados NoSQL
-* **Express** — Framework web do Node.js
-* **React** — Frontend
-* **Node.js** — Runtime JavaScript
-* **(Opcional)** **Redis** — Cache, rate limit, sessões
-
-> Se o repositório for *monorepo*, ele contém `backend/` (MEN) e `frontend/` (React). Caso contrário, utilize este README apenas para o que estiver presente.
+## ✨ Funcionalidades
+- CRUD de notas
+- Validação básica de payload
+- *Rate limiting* por IP (Upstash Redis)
 
 ---
 
-## Requisitos
-
-* **Node.js**: 22.6.0 (ou superior LTS)
-* **npm** ou **pnpm**/**yarn**
-* **MongoDB** local ou **MongoDB Atlas**
-* **(Opcional)** Docker & Docker Compose
-* **(Opcional)** Redis (local ou serviço gerenciado)
+## 🧰 Tecnologias
+- **Backend:** Node 18+ (recomendado 22), Express, Mongoose
+- **Frontend:** React 18 + Vite
+- **Banco:** MongoDB Atlas ou local
+- **Infra opcional:** Upstash Redis
 
 ---
 
-## Estrutura do projeto
+## 🔐 Configuração
 
-```
-mern-thinkboard/
-├── backend/
-│   ├── src/
-│   │   ├── server.js
-│   │   ├── routes/
-│   │   ├── controllers/
-│   │   ├── models/
-│   │   └── middlewares/
-│   ├── test/
-│   ├── package.json
-│   └── .env.example
-├── frontend/
-│   ├── src/
-│   ├── public/
-│   └── package.json
-├── docker-compose.yml (opcional)
-├── README.md
-└── .gitignore
-```
-
----
-
-## Configuração
-
-Crie um arquivo **`.env`** no diretório `backend/` com as variáveis abaixo:
-
-```ini
-# backend/.env
-PORT=4000
+### `.env` do Backend (`/backend`)
+```dotenv
 NODE_ENV=development
-MONGO_URI=mongodb://localhost:27017/thinkboard
-JWT_SECRET=troque-por-um-segredo-forte
-CLIENT_URL=http://localhost:5173
+PORT=5001
+MONGO_URI=<your_mongo_uri>
 
-# (opcional)
-REDIS_URL=redis://localhost:6379
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX=100
+UPSTASH_REDIS_REST_URL=<your_redis_rest_url>
+UPSTASH_REDIS_REST_TOKEN=<your_redis_rest_token>
 ```
 
-Para o **frontend**, crie `.env` conforme o bundler (Vite, CRA, etc.). Exemplo (Vite):
-
-```ini
-# frontend/.env
-VITE_API_BASE_URL=http://localhost:4000
+### `.env` do Frontend (`/frontend`)
+```dotenv
+VITE_API_URL=http://localhost:5001
 ```
+> Em produção, use a URL pública da API.
 
 ---
 
-## Rodando a aplicação
-
-### Opção A — Monorepo (dois pacotes)
-
+## ▶️ Como Rodar
 ```bash
-# 1) instalar dependências
-cd backend && npm install && cd ..
-cd frontend && npm install && cd ..
-
-# 2) subir backend
+# Backend
 cd backend
-npm run dev
+npm install
+npm run dev   # ou npm start em produção
 
-# 3) em outra aba, subir frontend
-cd ../frontend
-npm run dev
+# Frontend
+cd frontend
+npm install
+npm run dev   # abre em http://localhost:5173
 ```
 
-### Opção B — Docker (opcional)
+---
 
+## 🔌 API REST (Notas)
+- **Base URL (dev):** `http://localhost:5001/api`
+- **Formato:** JSON | **Header:** `Content-Type: application/json`
+- **Modelo:** `Note` com campos principais: `title` (string), `content` (string), `createdAt`/`updatedAt` (timestamps do Mongoose, se habilitados).
+
+### Endpoints
+
+#### GET `/api/notes`
+Retorna todas as notas **ordenadas por `createdAt` desc** (mais recentes primeiro).
+
+**Resposta 200**
+```json
+[
+  {
+    "_id": "66f0b9e6c3a7a4b7e1e0d123",
+    "title": "Minha nota",
+    "content": "Texto da nota",
+    "createdAt": "2025-10-04T12:00:00.000Z",
+    "updatedAt": "2025-10-04T12:00:00.000Z"
+  }
+]
+```
+
+#### GET `/api/notes/:id`
+Busca uma nota pelo `id`.
+
+- **200**: retorna o objeto da nota
+- **404**: `{ "message": "Note not found!" }`
+- **500**: `{ "message": "Internal server error" }`
+
+#### POST `/api/notes`
+Cria uma nova nota.
+
+**Body (JSON)**
+```json
+{ "title": "Título", "content": "Conteúdo" }
+```
+
+**Respostas**
+- **201**: retorna a nota criada
+- **500**: `{ "message": "Internal server error" }`
+
+#### PUT `/api/notes/:id`
+Atualiza parcialmente os campos `title` e/ou `content`.
+
+**Body (JSON)**
+```json
+{ "title": "Novo título", "content": "Novo conteúdo" }
+```
+
+**Respostas**
+- **200**: retorna a nota atualizada
+- **404**: `{ "message": "Note not found" }`
+- **500**: `{ "message": "Internal server error" }`
+
+#### DELETE `/api/notes/:id`
+Remove uma nota pelo `id`.
+
+**Respostas**
+- **200**: `{ "message": "Note deleted successfully!" }`
+- **404**: `{ "message": "Note not found" }`
+- **500**: `{ "message": "Internal server error" }`
+
+### Exemplos cURL
 ```bash
-docker compose up -d --build
+API=http://localhost:5000/api
+
+# Criar
+curl -X POST "$API/notes" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Primeira nota","content":"Olá"}'
+
+# Listar
+curl "$API/notes"
+
+# Detalhar
+curl "$API/notes/<id>"
+
+# Atualizar
+curl -X PUT "$API/notes/<id>" -H "Content-Type: application/json" -d '{"title":"Novo título"}'
+
+# Remover
+curl -X DELETE "$API/notes/<id>"
 ```
 
+**Códigos de status**: `200`, `201`, `404`, `500`. `429` pode ocorrer se o *rate limit* for excedido.
+
+> Este projeto **não** inclui endpoint de *healthcheck*; monitore via logs/infra.
+
 ---
 
-## Scripts úteis
+## ⚙️ Rate Limiting (Upstash)
+- Chaves por IP; retorna **429** ao exceder
+- Variáveis: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- Sugestão de UI: exibir mensagem amigável e permitir *retry*
 
-**Backend** (`backend/package.json`):
+---
 
-```json
-{
-  "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
-    "lint": "eslint .",
-    "test": "vitest --run"
-  }
-}
+## 🚀 Deploy (resumo)
+**Frontend**
+```bash
+cd frontend && npm run build   # gera dist/
 ```
+Hospede `dist/` (Vercel/Netlify/etc.) e aponte `VITE_API_URL` para a API pública.
 
-**Frontend** (`frontend/package.json` — Vite):
-
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  }
-}
-```
+**Backend**
+- Provedor (Railway/Render/Fly.io etc.) com `MONGO_URI` e *secrets* configurados
+- `NODE_ENV=production` e CORS liberado para o domínio do frontend
 
 ---
 
-## Endpoints principais
-
-> Base URL: `http://localhost:4000/api`
-
-### Notes
-
-* `GET /notes` — Lista notas (ordenadas por `createdAt` desc)
-* `GET /notes/:id` — Detalhe de uma nota
-* `POST /notes` — Cria nota `{ title, content }`
-* `PUT /notes/:id` — Atualiza nota
-* `DELETE /notes/:id` — Remove nota
-
-**Modelo** (exemplo):
-
-```ts
-Note {
-  _id: ObjectId,
-  title: string,
-  content: string,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
-**Respostas de erro** (padrão):
-
-```json
-{ "message": "Internal server error" }
-{ "message": "Note not found!" }
-```
-
-*(Adapte para seus recursos reais: auth, usuários, tags, etc.)*
+## 🛠️ Troubleshooting Rápido
+- **MongoDB**: revise `MONGO_URI` e IPs liberados no Atlas
+- **429**: ajuste limites do *rate limiter* e verifique envs do Upstash
+- **Vite imports**: cheque caminhos/maiúsculas e rode os comandos dentro de `frontend/`
 
 ---
 
-## Padrões e boas práticas
-
-* **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`…)
-* **Lint/Format:** ESLint + Prettier (CI bloqueia código fora do padrão)
-* **Variáveis de ambiente:** nunca comite `.env` — use `.env.example`
-* **Controle de dependências:** comite `package-lock.json` (reprodutibilidade)
-* **CI/CD:** build, lint, testes, e deploy automatizado
-* **Erros & Logs:** middleware padrão + correlação de requests
-* **Segurança:** Helmet, CORS estrito, validação (Zod/Yup), rate limit (Redis opcional)
-
----
-
-## Arquitetura
-
-* **Backend (MEN):** Express + Mongoose, camadas `routes → controllers → services → models`
-* **Frontend (React):** SPA com roteamento, páginas e services de API
-* **Banco:** MongoDB (Atlas/local)
-* **Cache (opcional):** Redis (sessions, rate limit, cache de consultas)
-
-> Diagrama sugerido: inclua a imagem `docs/architecture.png` e referencie aqui.
-
----
-
-## Roadmap
-
-* [ ] Autenticação JWT
-* [ ] Testes E2E (Playwright/Cypress) e API (Vitest/Supertest)
-* [ ] Observabilidade (metrics + logs estruturados)
-* [ ] Docker Compose completo (Mongo, Redis, API, Web)
-* [ ] Deploy (Render/Fly/EC2) + variáveis de ambiente por ambiente
-
----
-
-## Licença
-
-Este projeto é distribuído sob a licença MIT. Veja `LICENSE` para mais detalhes.
+## 📄 Licença
+MIT. Veja `LICENSE`.
